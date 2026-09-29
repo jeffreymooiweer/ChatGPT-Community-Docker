@@ -50,8 +50,9 @@ jobs:
         run: |
           set -euo pipefail
           state="$RUNNER_TEMP/upstream-state.json"
-          if [ "$EVENT_NAME" = pull_request ]; then
-            # Test the already deployed payload rather than unrelated new upstream code.
+          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = push ]; then
+            # Reproduce the tested release for code changes and repository migrations.
+            # Scheduled/manual update runs discover and validate newer upstream releases.
             cp upstream-state.json "$state"
           else
             git clone --depth=1 https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/upstream"
