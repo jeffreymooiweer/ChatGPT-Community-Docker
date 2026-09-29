@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+backend=x11
+socket="${WAYLAND_DISPLAY:-}"
+if [ -n "$socket" ]; then
+    [[ "$socket" = /* ]] || socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$socket"
+    [ ! -S "$socket" ] || backend=wayland
+fi
+exec /usr/bin/chromium --no-sandbox --ozone-platform="$backend" --start-maximized "$@"

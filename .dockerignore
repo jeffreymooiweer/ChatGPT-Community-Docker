@@ -1,0 +1,11 @@
+.git
+.gitignore
+.github
+unraid
+upstream-state.json
+README.md
+docs
+compose.yaml
+appdata
+.env
+.env.*

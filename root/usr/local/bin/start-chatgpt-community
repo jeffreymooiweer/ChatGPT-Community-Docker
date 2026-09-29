@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-community"
+LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/chatgpt-community"
+mkdir -p "$STATE" "$LOG_DIR"
+
+# The parent keeps the lock for the entire Electron lifetime.
+exec 9>"$STATE/application.lock"
+flock -n 9 || exit 0
+LOG="$LOG_DIR/startup.log"
+if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG")" -gt 5242880 ]; then
+    mv -f "$LOG" "$LOG.1"
+fi
+exec >>"$LOG" 2>&1
+
+backend=x11
+socket="${WAYLAND_DISPLAY:-}"
+if [ -n "$socket" ]; then
+    [[ "$socket" = /* ]] || socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$socket"
+    [ ! -S "$socket" ] || backend=wayland
+fi
+export CODEX_OZONE_PLATFORM="$backend"
+export XDG_SESSION_TYPE="$backend"
+printf '\n[%s] Starting ChatGPT Community: user=%s backend=%s\n' \
+    "$(date --iso-8601=seconds)" "$(id -un)" "$backend"
+
+# Retain existing profile, keychain and Remote enrollment. No profile cleanup.
+# A removed Webtop browser may still be registered as the default browser.
+xdg-mime default chatgpt-browser.desktop x-scheme-handler/http || true
+xdg-mime default chatgpt-browser.desktop x-scheme-handler/https || true
+
+# This disables Chromium's own sandbox, NOT the agent permission settings.
+# Root SSH access makes the container boundary insufficient protection for the host.
+child=''
+stop() {
+    if [ -n "$child" ]; then
+        kill -TERM "$child" 2>/dev/null || true
+        wait "$child" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap stop TERM INT
+/usr/bin/codex-desktop --no-sandbox --ozone-platform="$backend" "$@" 9>&- &
+child=$!
+status=0
+wait "$child" || status=$?
+printf '[%s] ChatGPT exited with status %s; retrying in 5 seconds.\n' \
+    "$(date --iso-8601=seconds)" "$status"
+exit "$status"

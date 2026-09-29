@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Sign-in Browser
+Comment=Auxiliary browser for ChatGPT sign-in and external links
+Exec=/usr/local/bin/chatgpt-browser %U
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+Categories=Network;WebBrowser;

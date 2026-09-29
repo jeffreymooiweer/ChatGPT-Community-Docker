@@ -1,0 +1,7 @@
+#!/bin/sh
+# Keep the application alive even when the streaming browser is disconnected.
+# Do not use the Selkies watchdog: it would be a second restart owner.
+while :; do
+    /usr/local/bin/start-chatgpt-community
+    sleep 5
+done

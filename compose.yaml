@@ -1,0 +1,23 @@
+services:
+  chatgpt-community:
+    image: ghcr.io/jeffreymooiweer/chatgpt-community-docker:latest
+    hostname: chatgpt-community
+    shm_size: 1gb
+    restart: unless-stopped
+    ports:
+      # Local access only. For LAN access, replace 127.0.0.1 with your host's
+      # trusted LAN address. Do not expose this WebUI directly to the internet.
+      - "127.0.0.1:33443:3001"
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Etc/UTC
+      PASSWORD: "" # Optional WebUI login, separate from the application login.
+      ENABLE_HOST_SSH: "false"
+    volumes:
+      - ./appdata:/config
+      # Optional: grant access only to a selected folder, initially read-only.
+      # - /absolute/path/to/project:/workspace/project:ro
+    # Optional Intel/AMD GPU; omit when the device does not exist.
+    # devices:
+    #   - /dev/dri:/dev/dri

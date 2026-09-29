@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Container version="2">
+  <Name>ChatGPT-Community</Name>
+  <Repository>ghcr.io/jeffreymooiweer/chatgpt-community-docker:latest</Repository>
+  <Registry>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/pkgs/container/chatgpt-community-docker</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/issues</Support>
+  <Project>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker</Project>
+  <ReadMe>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker#readme</ReadMe>
+  <Overview>Docker packaging for the upstream ChatGPT Community app. Standard: just the app, with persistent appdata and no automatic SSH setup. Optional: map selected folders or enable GPU acceleration. Advanced: opt in to SSH setup and authorize the key separately for server administration. Existing SSH data is preserved. WebUI login is optional; keep access on a trusted LAN/VPN.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>https://[IP]:[PORT:3001]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/ilysenko/codex-desktop-linux/main/assets/codex-linux.png</Icon>
+  <ExtraParams>--shm-size=1g --hostname=ChatGPT-Community</ExtraParams>
+  <Config Name="WebUI HTTPS" Target="3001" Default="33443" Mode="tcp" Description="ChatGPT application over HTTPS" Type="Port" Display="always" Required="true" Mask="false">33443</Config>
+  <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/chatgpt-community" Mode="rw" Description="Keep the existing path to preserve login, pairing and SSH keys" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/chatgpt-community</Config>
+  <Config Name="Optional: shared folder" Target="/workspace/files" Default="" Mode="ro" Description="Leave blank for app-only mode. Select one folder to make it available at /workspace/files (read-only by default). Change Access Mode to Read/Write only if the app may edit/delete files." Type="Path" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="WebUI username (optional)" Target="CUSTOM_USER" Default="abc" Mode="" Description="Only used when a WebUI password is set; unrelated to your ChatGPT account" Type="Variable" Display="always" Required="false" Mask="false">abc</Config>
+  <Config Name="WebUI password (optional)" Target="PASSWORD" Default="" Mode="" Description="Leave blank for no WebUI login (trusted LAN/VPN only). Set a strong unique password to enable login." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Wayland" Target="PIXELFLUX_WAYLAND" Default="true" Mode="" Description="Use Wayland/labwc; false selects the single-app X11 fallback" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Stream FPS" Target="SELKIES_FRAMERATE" Default="30" Mode="" Description="Fixed stream frame-rate cap" Type="Variable" Display="advanced" Required="true" Mask="false">30</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Container user ID; retain the existing value on upgrade" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Container group ID; retain the existing value on upgrade" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Timezone" Target="TZ" Default="Europe/Amsterdam" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="true" Mask="false">Europe/Amsterdam</Config>
+  <Config Name="Advanced: provision host SSH" Target="ENABLE_HOST_SSH" Default="false|true" Mode="" Description="false: app only, no new SSH setup. true: create missing SSH keys/config; host authorization is separate. Existing SSH access is preserved, not revoked, when false." Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="Advanced: SSH host" Target="SSH_HOST" Default="" Mode="" Description="Only needed with SSH setup enabled and no existing SSH config. Enter the target server hostname or IP. No host address is needed for normal app use." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Advanced: SSH user" Target="SSH_USER" Default="root" Mode="" Description="Account on the target server; only used for a new SSH config. Root grants full host control once authorized; choose a restricted account where supported." Type="Variable" Display="advanced" Required="false" Mask="false">root</Config>
+  <Config Name="Advanced: SSH port" Target="SSH_PORT" Default="22" Mode="" Description="Target SSH port; only used for a new SSH config." Type="Variable" Display="advanced" Required="false" Mask="false">22</Config>
+</Container>
