@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Container version="2">
   <Name>ChatGPT-Community</Name>
+  <TemplateURL>https://raw.githubusercontent.com/jeffreymooiweer/ChatGPT-Community-Docker/main/unraid/chatgpt-community.xml</TemplateURL>
   <Repository>ghcr.io/jeffreymooiweer/chatgpt-community-docker:latest</Repository>
   <Registry>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/pkgs/container/chatgpt-community-docker</Registry>
   <Network>bridge</Network>

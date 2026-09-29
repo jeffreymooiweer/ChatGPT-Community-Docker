@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CommunityApplications>
+  <Profile>Docker packaging and an Unraid template for ChatGPT Community for Linux, accessible through a browser. Credit for the community app and Linux adaptations belongs to the upstream authors and contributors at ilysenko/codex-desktop-linux. This repository maintains the Docker image and template only. Report Docker image or template issues through the linked GitHub Issues page.</Profile>
+  <Icon>https://raw.githubusercontent.com/ilysenko/codex-desktop-linux/main/assets/codex-linux.png</Icon>
+  <WebPage>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker</WebPage>
+  <Forum>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/issues</Forum>
+</CommunityApplications>
