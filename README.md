@@ -1,5 +1,11 @@
 # ChatGPT Community — Docker Image
 
+[![Build](https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/actions/workflows/build.yml)
+[![Docker image](https://img.shields.io/badge/Docker_image-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/pkgs/container/chatgpt-community-docker)
+[![Unraid ready](https://img.shields.io/badge/Unraid-ready-F15A2C?logo=unraid&logoColor=white)](unraid/chatgpt-community.xml)
+[![Platform](https://img.shields.io/badge/platform-linux%2Famd64-555555?logo=linux&logoColor=white)](compose.yaml)
+[![Docker packaging license: MIT](https://img.shields.io/badge/Docker_packaging-MIT-3DA639)](LICENSE)
+
 Run [ChatGPT Community for Linux](https://github.com/ilysenko/codex-desktop-linux)
 on your Docker server and use the app from your browser—without a full remote desktop.
 
