@@ -22,10 +22,21 @@ RUN git init . \
     && git fetch --depth=1 origin "${WRAPPER_SHA}" \
     && git checkout --detach FETCH_HEAD
 
-COPY tests/remote-control-visibility.test.cjs /tmp/unraid-tests/remote-control-visibility.test.cjs
+COPY patches/remote-mobile-reasoning-summary.patch /tmp/remote-mobile-reasoning-summary.patch
+# Official 26.928 adds a thread-specific summary override to the caller.
+# Keep the patch fail-closed, and tolerate upstream incorporating this exact fix.
+RUN if git apply --check /tmp/remote-mobile-reasoning-summary.patch; then \
+        git apply /tmp/remote-mobile-reasoning-summary.patch; \
+    elif git apply --reverse --check /tmp/remote-mobile-reasoning-summary.patch; then \
+        echo 'Reasoning-summary compatibility fix is already upstream'; \
+    else \
+        echo 'Upstream reasoning-summary contract changed; review required' >&2; exit 1; \
+    fi
+
+COPY tests/*.test.cjs /tmp/unraid-tests/
 # Upstream now discovers this function semantically across webview assets.
 # Verify the contract and access restrictions without an obsolete filename patch.
-RUN UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/remote-control-visibility.test.cjs \
+RUN UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/*.test.cjs \
     && node --test linux-features/remote-mobile-control/test.js
 
 RUN printf '%s\n' '{"enabled":["remote-mobile-control"]}' \
