@@ -11,6 +11,21 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class BuildContractTests(unittest.TestCase):
+    def test_upstream_fix_is_validated_without_reapplying_local_diff(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertNotIn("git apply", dockerfile)
+        self.assertFalse((ROOT / "patches/remote-mobile-reasoning-summary.patch").exists())
+        self.assertIn("UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/*.test.cjs", dockerfile)
+        checksum = dockerfile.index("sha256sum -c -")
+        extract = dockerfile.index("dpkg-deb --fsys-tarfile /tmp/chatgpt.deb")
+        integration = dockerfile.index("OFFICIAL_ASAR=/tmp/official-contract/usr/lib/chatgpt/resources/app.asar")
+        build = dockerfile.index("UPSTREAM_DEB=/tmp/chatgpt.deb make build-app")
+        self.assertLess(checksum, extract)
+        self.assertLess(extract, integration)
+        self.assertLess(integration, build)
+
+
 @unittest.skipUnless(shutil.which("jq"), "jq is required for the release resolver")
 class ReleaseTests(unittest.TestCase):
     def resolve(self, event, schedule="", changed=False, invalid=False):

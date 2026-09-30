@@ -12,7 +12,7 @@ const descriptors = require(path.join(upstream, "linux-features/remote-mobile-co
 const apply = descriptors.find((p) => p.id === "linux-remote-mobile-reasoning-summary-none").apply;
 const marker = "codexLinuxRemoteMobileReasoningSummaryNone";
 
-// Minimal executable contract from official 26.928.20755. The new caller
+// Minimal executable contract from official 26.928. The current caller
 // adds ||s to the feature override; all existing access/host checks stay intact.
 function fixture(extra = "||s") {
   return "async function arn(e,t,n,r,i,a,o){let s=n.request,D=a.latestThreadSettings,ne=a.initialParams,Fe=a.configRequirements,Re=ne?.summary??`none`;D?.summary!==void 0&&(Re=D.summary),o.reasoningSummaryOverride!=null&&(Re=o.reasoningSummaryOverride),Re=Fe==null?null:Fe.model_reasoning_summary??Re,s.summary!==void 0&&(Re=s.summary);e.logger.info(`Reasoning summary turn-start config resolved`,{safe:{summary:Re}});return{summary:Re}}" +
@@ -30,20 +30,18 @@ function patchQuietly(source) {
   }
 }
 
-test("current and recorded callers patch exactly once and remain idempotent", () => {
-  for (const extra of ["||s", ""]) {
-    const source = fixture(extra);
-    const { result, warnings } = patchQuietly(source);
-    assert.notEqual(result, source);
-    assert.deepEqual(warnings, []);
-    assert.equal(result.split(marker).length - 1, 1);
-    assert.equal(apply(result), result);
-    // The patch only inserts two fragments; the original caller options,
-    // feature override, and permission expressions remain byte-identical.
-    const stripped = result.replace("codexLinuxRemoteMobileHost:nP(e.getHostId())&&a.mode===`durable`,", "")
-      .replace("/*" + marker + "*/navigator.userAgent.includes(`Linux`)&&o.codexLinuxRemoteMobileHost&&s.summary===void 0&&(Re=`none`);", "");
-    assert.equal(stripped, source);
-  }
+test("current caller patches exactly once and remains idempotent", () => {
+  const source = fixture();
+  const { result, warnings } = patchQuietly(source);
+  assert.notEqual(result, source);
+  assert.deepEqual(warnings, []);
+  assert.equal(result.split(marker).length - 1, 1);
+  assert.equal(apply(result), result);
+  // The patch only inserts two fragments; the original caller options,
+  // feature override, and permission expressions remain byte-identical.
+  const stripped = result.replace("codexLinuxRemoteMobileHost:nP(e.getHostId())&&a.mode===`durable`,", "")
+    .replace("/*" + marker + "*/navigator.userAgent.includes(`Linux`)&&o.codexLinuxRemoteMobileHost&&s.summary===void 0&&(Re=`none`);", "");
+  assert.equal(stripped, source);
 });
 
 test("summary override only affects implicit Linux local durable turns", async () => {
@@ -89,7 +87,7 @@ test("ambiguous, incomplete and unfamiliar caller contracts fail closed", () => 
     source + source,
     source.replace("canUseProjectlessWorkspace:!nP", "canUseProjectlessWorkspace:nP"),
     source.replace("concurrent_reasoning_summaries", "another_feature"),
-    fixture("||!0"), fixture("||s||another"), fixture("&&s"),
+    fixture(""), fixture("||!0"), fixture("||s||another"), fixture("&&s"),
     source.replace("o.reasoningSummaryOverride!=null", "o.reasoningSummaryOverride===null"),
     patched.replace("codexLinuxRemoteMobileHost:nP(e.getHostId())&&a.mode===`durable`,", ""),
     patched.replace("/*" + marker + "*/navigator.userAgent.includes(`Linux`)&&o.codexLinuxRemoteMobileHost&&s.summary===void 0&&(Re=`none`);", ""),
@@ -101,8 +99,8 @@ test("ambiguous, incomplete and unfamiliar caller contracts fail closed", () => 
   }
 });
 
-// Optional read-only integration check against a downloaded, checksum-verified
-// official archive. The Docker build also enforces all patches on the real app.
+// Read-only integration check against a downloaded, checksum-verified official
+// archive. Optional locally, but the Dockerfile explicitly runs it before build.
 test("official ASAR contains one compatible summary owner", { skip: !process.env.OFFICIAL_ASAR }, () => {
   const fd = fs.openSync(process.env.OFFICIAL_ASAR, "r");
   try {

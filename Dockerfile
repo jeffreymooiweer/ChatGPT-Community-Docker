@@ -22,20 +22,9 @@ RUN git init . \
     && git fetch --depth=1 origin "${WRAPPER_SHA}" \
     && git checkout --detach FETCH_HEAD
 
-COPY patches/remote-mobile-reasoning-summary.patch /tmp/remote-mobile-reasoning-summary.patch
-# Official 26.928 adds a thread-specific summary override to the caller.
-# Keep the patch fail-closed, and tolerate upstream incorporating this exact fix.
-RUN if git apply --check /tmp/remote-mobile-reasoning-summary.patch; then \
-        git apply /tmp/remote-mobile-reasoning-summary.patch; \
-    elif git apply --reverse --check /tmp/remote-mobile-reasoning-summary.patch; then \
-        echo 'Reasoning-summary compatibility fix is already upstream'; \
-    else \
-        echo 'Upstream reasoning-summary contract changed; review required' >&2; exit 1; \
-    fi
-
 COPY tests/*.test.cjs /tmp/unraid-tests/
-# Upstream now discovers this function semantically across webview assets.
-# Verify the contract and access restrictions without an obsolete filename patch.
+# Upstream owns the current reasoning-summary and visibility implementations.
+# Verify behavior and access restrictions, not the spelling of a local diff.
 RUN UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/*.test.cjs \
     && node --test linux-features/remote-mobile-control/test.js
 
@@ -48,6 +37,16 @@ RUN curl --fail --location --retry 3 \
     && echo "${OFFICIAL_SHA256}  /tmp/chatgpt.deb" | sha256sum -c - \
     && test "$(dpkg-deb -f /tmp/chatgpt.deb Version)" = "${OFFICIAL_VERSION}" \
     && test "$(dpkg-deb -f /tmp/chatgpt.deb Architecture)" = amd64
+
+# Exercise the real, checksum-verified app before building or publishing it.
+# Extract only this data file; never run official package maintainer scripts.
+RUN mkdir -p /tmp/official-contract \
+    && dpkg-deb --fsys-tarfile /tmp/chatgpt.deb \
+        | tar -x -C /tmp/official-contract ./usr/lib/chatgpt/resources/app.asar \
+    && UPSTREAM_SOURCE=/src \
+        OFFICIAL_ASAR=/tmp/official-contract/usr/lib/chatgpt/resources/app.asar \
+        node --test /tmp/unraid-tests/remote-mobile-reasoning-summary.test.cjs \
+    && rm -rf /tmp/official-contract
 
 RUN UPSTREAM_DEB=/tmp/chatgpt.deb make build-app \
     && PACKAGE_WITH_UPDATER=0 PACKAGE_VERSION="${OFFICIAL_VERSION}" make deb
