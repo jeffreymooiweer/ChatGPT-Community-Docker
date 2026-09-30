@@ -10,7 +10,24 @@
   <Support>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/issues</Support>
   <Project>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker</Project>
   <ReadMe>https://github.com/jeffreymooiweer/ChatGPT-Community-Docker#readme</ReadMe>
-  <Overview>Docker packaging for the upstream ChatGPT Community app. Standard: just the app, with persistent appdata and no automatic SSH setup. Optional: map selected folders or enable GPU acceleration. Advanced: opt in to SSH setup and authorize the key separately for server administration. Existing SSH data is preserved. WebUI login is optional; keep access on a trusted LAN/VPN.</Overview>
+  <Overview>Docker packaging for the upstream ChatGPT Community app. Standard: just the app, with persistent appdata. Optional: map selected folders or enable GPU acceleration. Advanced: optional SSH access for server administration; follow the setup steps under Additional Requirements below. WebUI login is optional; keep access on a trusted LAN/VPN.</Overview>
+  <Requires>No extra requirements for normal app use. SSH is OPTIONAL.
+
+**Optional SSH setup for Unraid**
+
+1. On your Unraid server, open Settings → Management Access. Set Use SSH to Yes and note the SSH port (normally 22). Apply only if changed. Keep SSH on your trusted LAN/VPN; do not forward it to the internet.
+
+2. Switch this container form to Advanced View. Set Advanced: provision host SSH to true, SSH host to your server's reachable LAN IP/hostname (not localhost), SSH user to root, and SSH port to the port above.
+
+3. Finish any active app tasks, then click Apply. This recreates the container and interrupts its running sessions. Setup creates missing keys/config only; it does not grant access yet.
+
+4. Open this container's Logs from the Docker tab. Copy the complete public-key line beginning with ssh-ed25519. Under Users → root → SSH authorized keys, add it on a NEW line without removing existing keys, then Save. Never copy or share the private key.
+
+5. Verify the server's SSH host-key fingerprint as explained in the guide below. Open this container's Console and test: [code]su -s /bin/sh abc -c "ssh server 'hostname; id'"[/code]. A successful check shows your server's name and uid=0(root).
+
+**Important:** authorizing root gives the app full control of your server. Privileged mode and the Docker socket are not needed. Existing SSH config/keys are preserved; changing these fields does not replace an existing connection, and setting provisioning back to false does not revoke access. Older configs may use the alias unraid instead of server.
+
+[a href="https://github.com/jeffreymooiweer/ChatGPT-Community-Docker/blob/main/docs/server-access.md#unraid-setup" target="_blank" rel="noopener noreferrer"]Full SSH guide, verification and troubleshooting[/a]</Requires>
   <Category>Tools:</Category>
   <WebUI>https://[IP]:[PORT:3001]/</WebUI>
   <Icon>https://raw.githubusercontent.com/ilysenko/codex-desktop-linux/main/assets/codex-linux.png</Icon>
@@ -25,8 +42,8 @@
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Container user ID; retain the existing value on upgrade" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Container group ID; retain the existing value on upgrade" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
   <Config Name="Timezone" Target="TZ" Default="Europe/Amsterdam" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="true" Mask="false">Europe/Amsterdam</Config>
-  <Config Name="Advanced: provision host SSH" Target="ENABLE_HOST_SSH" Default="false|true" Mode="" Description="false: app only, no new SSH setup. true: create missing SSH keys/config; host authorization is separate. Existing SSH access is preserved, not revoked, when false." Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
-  <Config Name="Advanced: SSH host" Target="SSH_HOST" Default="" Mode="" Description="Only needed with SSH setup enabled and no existing SSH config. Enter the target server hostname or IP. No host address is needed for normal app use." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Advanced: provision host SSH" Target="ENABLE_HOST_SSH" Default="false|true" Mode="" Description="Optional. See Additional Requirements above for setup. true creates missing keys/config only; authorize the public key separately. false does not revoke existing access." Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="Advanced: SSH host" Target="SSH_HOST" Default="" Mode="" Description="For new SSH setup only: enter the reachable server LAN IP/hostname, not localhost. Existing SSH config is preserved. Not needed for normal app use." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Advanced: SSH user" Target="SSH_USER" Default="root" Mode="" Description="Account on the target server; only used for a new SSH config. Root grants full host control once authorized; choose a restricted account where supported." Type="Variable" Display="advanced" Required="false" Mask="false">root</Config>
   <Config Name="Advanced: SSH port" Target="SSH_PORT" Default="22" Mode="" Description="Target SSH port; only used for a new SSH config." Type="Variable" Display="advanced" Required="false" Mask="false">22</Config>
 </Container>
