@@ -1,0 +1,97 @@
+name: Audit rejected upstream contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/audit-upstream.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: wrapper
+      - uses: actions/checkout@v4
+        with:
+          repository: ilysenko/codex-desktop-linux
+          ref: 4b53b6478989b12091a7e02c08cb16fa38edd20b
+          persist-credentials: false
+          path: upstream
+      - name: Inspect checksum-verified candidate as data only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report/official extracted
+          curl --fail --location --retry 3 \
+            https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_26.1029.61003_amd64.deb \
+            -o "$RUNNER_TEMP/chatgpt.deb"
+          echo "f3af8afec5d25c228eb6f4dbd9cfde0fea7ca5e4b42aff0145a1ded273d01b2d  $RUNNER_TEMP/chatgpt.deb" | sha256sum -c -
+          dpkg-deb --fsys-tarfile "$RUNNER_TEMP/chatgpt.deb" \
+            | tar -x -C extracted ./usr/lib/chatgpt/resources/app.asar
+          python3 - <<'PY'
+          import json
+          import struct
+          from pathlib import Path, PurePosixPath
+
+          archive = Path('extracted/usr/lib/chatgpt/resources/app.asar')
+          report = Path('report')
+          anchors = ['Reasoning summary turn-start config resolved', 'reasoningSummaryOverride',
+                     'model_reasoning_summary', 'concurrent_reasoning_summaries',
+                     'codexLinuxRemoteMobileReasoningSummaryNone']
+          inventory = []
+          matches = []
+          with archive.open('rb') as stream:
+              prefix = stream.read(16)
+              data_start = 8 + struct.unpack_from('<I', prefix, 4)[0]
+              header_size = struct.unpack_from('<I', prefix, 12)[0]
+              assert 0 < header_size <= 64 * 1024 * 1024
+              header = json.loads(stream.read(header_size))
+              def walk(entries, prefix=''):
+                  for name, entry in entries.items():
+                      location = prefix + name
+                      if 'files' in entry:
+                          yield from walk(entry['files'], location + '/')
+                      else:
+                          yield location, entry
+              for name, entry in walk(header['files']):
+                  if not name.endswith('.js'):
+                      continue
+                  inventory.append(name)
+                  if entry.get('unpacked') or 'offset' not in entry:
+                      continue
+                  size, offset = entry['size'], int(entry['offset'])
+                  assert 0 <= size <= archive.stat().st_size - data_start - offset
+                  stream.seek(data_start + offset)
+                  source = stream.read(size).decode('utf-8')
+                  hits = {anchor: source.count(anchor) for anchor in anchors if anchor in source}
+                  if not hits:
+                      continue
+                  parts = PurePosixPath(name).parts
+                  assert not PurePosixPath(name).is_absolute() and '..' not in parts
+                  target = report / 'official' / name
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_text(source)
+                  snippets = {}
+                  for anchor in hits:
+                      start = source.index(anchor)
+                      snippets[anchor] = source[max(0, start-1200):start+1600]
+                  matches.append({'path': name, 'size': size, 'hits': hits, 'snippets': snippets})
+                  print(json.dumps({'path': name, 'size': size, 'hits': hits}))
+          (report / 'inventory.json').write_text(json.dumps(inventory, indent=2))
+          (report / 'matches.json').write_text(json.dumps(matches, indent=2))
+          print(f'Inspected {len(inventory)} JavaScript assets; {len(matches)} files reference summary settings.')
+          PY
+          git -C upstream archive HEAD > report/upstream-source.tar
+          git -C wrapper archive HEAD > report/wrapper-source.tar
+      - name: Save read-only diagnostic inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-contract-audit
+          path: report/
+          retention-days: 1
