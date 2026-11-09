@@ -28,25 +28,47 @@ class BuildContractTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("jq"), "jq is required for the release resolver")
 class ReleaseTests(unittest.TestCase):
-    def resolve(self, event, schedule="", changed=False, invalid=False):
+    def resolve(self, event, schedule="", changed=False, invalid=False,
+                discovery_failure=False):
         workflow = (ROOT / ".github/workflows/build.yml").read_text()
         step = workflow.split("      - name: Resolve upstream\n", 1)[1].split("\n      - name:", 1)[0]
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        recorded = json.loads((ROOT / "upstream-state.json").read_text())
+        recorded_bytes = (ROOT / "upstream-state.json").read_bytes()
+        recorded = json.loads(recorded_bytes)
         candidate = dict(recorded)
         if changed:
-            candidate["wrapper_sha"] = "a" * 40
+            candidate.update({
+                "wrapper_sha": "a" * 40,
+                "official_version": "99.1.0",
+                "official_path": "pool/main/c/chatgpt/chatgpt_99.1.0_amd64.deb",
+                "official_sha256": "b" * 64,
+            })
         if invalid:
             candidate["official_sha256"] = "invalid"
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
+            checkout = folder / "checkout"
+            checkout.mkdir()
+            recorded_path = checkout / "upstream-state.json"
+            recorded_path.write_bytes(recorded_bytes)
+            runner_temp = folder / "runner"
+            runner_temp.mkdir()
             bin_dir = folder / "bin"
             bin_dir.mkdir()
             # Git and Node are only mocked at the discovery boundary; execute
             # the actual workflow's validation and build-decision logic.
             commands = {
                 "git": '#!/bin/bash\nset -eu\necho git >> "$CALLS"\nif [ "$1" = clone ]; then mkdir -p "${@: -1}"; else echo "$TEST_SHA"; fi\n',
-                "node": '#!/bin/bash\nset -eu\necho node >> "$CALLS"\ncp "$METADATA" "$RUNNER_TEMP/package.json"\n',
+                "node": textwrap.dedent("""\
+                    #!/bin/bash
+                    set -eu
+                    echo node >> "$CALLS"
+                    if [ "$TEST_DISCOVERY_EXIT_STATUS" != 0 ]; then
+                        echo 'fixture: signed metadata verification failed' >&2
+                        exit "$TEST_DISCOVERY_EXIT_STATUS"
+                    fi
+                    cp "$METADATA" "$RUNNER_TEMP/package.json"
+                    """),
             }
             for name, body in commands.items():
                 path = bin_dir / name
@@ -59,24 +81,40 @@ class ReleaseTests(unittest.TestCase):
             output = folder / "output"
             calls = folder / "calls"
             env = os.environ | {"EVENT_NAME": event, "SCHEDULE": schedule,
-                                "RUNNER_TEMP": str(folder), "GITHUB_OUTPUT": str(output),
+                                "RUNNER_TEMP": str(runner_temp), "GITHUB_OUTPUT": str(output),
                                 "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
                                 "CALLS": str(calls), "METADATA": str(metadata),
-                                "TEST_SHA": candidate["wrapper_sha"]}
-            result = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                                "TEST_SHA": candidate["wrapper_sha"],
+                                "TEST_DISCOVERY_EXIT_STATUS": "42" if discovery_failure else "0"}
+            result = subprocess.run(["bash", "-c", script], cwd=checkout, env=env,
                                     text=True, capture_output=True)
             outputs = dict(line.split("=", 1) for line in output.read_text().splitlines()) if output.exists() else {}
-            return result, outputs, calls.exists(), recorded, candidate
+            self.assertEqual(recorded_path.read_bytes(), recorded_bytes,
+                             "Discovery must not change the last published upstream state")
+            discovered = calls.read_text().splitlines() if calls.exists() else []
+            return result, outputs, discovered, recorded, candidate
 
-    def test_code_changes_rebuild_recorded_release_without_discovery(self):
+    def test_code_changes_discover_current_release_instead_of_recorded_release(self):
         for event in ("push", "pull_request"):
             with self.subTest(event=event):
-                result, output, discovered, recorded, _ = self.resolve(event, changed=True)
+                result, output, discovered, recorded, candidate = self.resolve(event, changed=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertFalse(discovered)
+                self.assertIn("node", discovered)
+                self.assertNotEqual(candidate["official_version"], recorded["official_version"])
+                self.assertEqual(output["should_build"], "true")
+                self.assertEqual(output["changed"], "true")
+                for key, value in candidate.items():
+                    self.assertEqual(output[key], value)
+
+    def test_code_changes_still_build_when_discovery_is_unchanged(self):
+        for event in ("push", "pull_request"):
+            with self.subTest(event=event):
+                result, output, discovered, _, candidate = self.resolve(event)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("node", discovered)
                 self.assertEqual(output["should_build"], "true")
                 self.assertEqual(output["changed"], "false")
-                for key, value in recorded.items():
+                for key, value in candidate.items():
                     self.assertEqual(output[key], value)
 
     def test_scheduled_checks_skip_unchanged_but_weekly_refresh_builds(self):
@@ -84,7 +122,8 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(schedule=schedule):
                 result, output, discovered, _, _ = self.resolve("schedule", schedule)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertTrue(discovered)
+                self.assertIn("node", discovered)
+                self.assertEqual(output["changed"], "false")
                 self.assertEqual(output["should_build"], should_build)
 
     def test_new_upstream_is_still_tested_on_schedule_and_manual_runs(self):
@@ -92,10 +131,20 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(event=event):
                 result, output, discovered, _, candidate = self.resolve(event, changed=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertTrue(discovered)
+                self.assertIn("node", discovered)
                 self.assertEqual(output["changed"], "true")
                 self.assertEqual(output["should_build"], "true")
-                self.assertEqual(output["wrapper_sha"], candidate["wrapper_sha"])
+                for key, value in candidate.items():
+                    self.assertEqual(output[key], value)
+
+    def test_discovery_failure_stops_before_build_outputs_without_falling_back(self):
+        for event in ("push", "pull_request", "schedule", "workflow_dispatch"):
+            with self.subTest(event=event):
+                result, output, discovered, _, _ = self.resolve(
+                    event, changed=True, discovery_failure=True)
+                self.assertEqual(result.returncode, 42, result.stderr)
+                self.assertIn("node", discovered)
+                self.assertEqual(output, {})
 
     def test_invalid_discovery_fails_before_build_outputs(self):
         result, output, _, _, _ = self.resolve("schedule", invalid=True)

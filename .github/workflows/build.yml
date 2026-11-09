@@ -50,21 +50,17 @@ jobs:
         run: |
           set -euo pipefail
           state="$RUNNER_TEMP/upstream-state.json"
-          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = push ]; then
-            # Reproduce the tested release for code changes and repository migrations.
-            # Scheduled/manual update runs discover and validate newer upstream releases.
-            cp upstream-state.json "$state"
-          else
-            git clone --depth=1 https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/upstream"
-            node "$RUNNER_TEMP/upstream/scripts/lib/upstream-linux-package.js" \
-              --output-dir "$RUNNER_TEMP/metadata" \
-              --metadata "$RUNNER_TEMP/package.json" \
-              --key-base64 "$RUNNER_TEMP/upstream/assets/openai-codex-linux-repository-key.gpg.base64" \
-              --arch amd64 --metadata-only
-            jq -S --arg sha "$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" \
-              '{wrapper_sha:$sha, official_version:.version, official_path:.repositoryPath, official_sha256:.sha256}' \
-              "$RUNNER_TEMP/package.json" > "$state"
-          fi
+          # Local packages must match the current signed stable index on every build.
+          # The recorded state tracks successful publication, not the next candidate.
+          git clone --depth=1 https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/upstream"
+          node "$RUNNER_TEMP/upstream/scripts/lib/upstream-linux-package.js" \
+            --output-dir "$RUNNER_TEMP/metadata" \
+            --metadata "$RUNNER_TEMP/package.json" \
+            --key-base64 "$RUNNER_TEMP/upstream/assets/openai-codex-linux-repository-key.gpg.base64" \
+            --arch amd64 --metadata-only
+          jq -S --arg sha "$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" \
+            '{wrapper_sha:$sha, official_version:.version, official_path:.repositoryPath, official_sha256:.sha256}' \
+            "$RUNNER_TEMP/package.json" > "$state"
           jq -e '
             (.wrapper_sha | test("^[0-9a-f]{40}$")) and
             (.official_sha256 | test("^[0-9a-f]{64}$")) and
