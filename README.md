@@ -155,8 +155,10 @@ candidates that pass the required checks are published as `latest`. Upstream
 changes can still require maintenance; failed candidates leave the previous
 published image available. Previous builds have unique `build-...` tags.
 
-Code changes rebuild the recorded, tested app version. Scheduled checks and
-manual workflow runs test newer upstream versions before promoting them.
+Every workflow run discovers the current upstream wrapper and signed stable app
+package, including code changes and pull requests. `upstream-state.json` records
+the last successfully tested and published release; failed builds and pull
+requests leave it unchanged.
 
 Publication does not update running containers. Finish active tasks and back up
 appdata before updating. For Compose:
