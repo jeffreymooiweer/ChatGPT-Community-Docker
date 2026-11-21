@@ -1,6 +1,6 @@
 {
-  "official_path": "pool/main/c/chatgpt/chatgpt_26.1111.71704_amd64.deb",
-  "official_sha256": "01eef7c77c835f7e1afb92ba1c29178a4c19d6c66573bdd3b86520e2abf806a4",
-  "official_version": "26.1111.71704",
+  "official_path": "pool/main/c/chatgpt/chatgpt_26.1117.41037_amd64.deb",
+  "official_sha256": "830e251b6ca4ad45fe6904127a790e8f00f7c26ed4c8039473f7323c7c4e2692",
+  "official_version": "26.1117.41037",
   "wrapper_sha": "04840e91b661b6ec9394cb34710d6745ad20cbf9"
 }
