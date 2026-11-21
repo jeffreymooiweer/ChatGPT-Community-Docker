@@ -24,6 +24,7 @@ function captureWarnings(run) {
 }
 
 function factory(id, body, expression) {
+  if (expression === "function") return `${id}:function(e,t,n){${body}}`;
   return expression ? `${id}:(function(e,t,n){${body}})` : `${id}(e,t,n){${body}}`;
 }
 
@@ -78,7 +79,7 @@ function settingsFixture(panel = true, expression = false) {
 
 test("loader copies keep the module-local rollout binding and Linux-only behavior", () => {
   assert.equal(loadGate.assetMatch, undefined, "Every copied loader module must be selected");
-  for (const expression of [false, true]) {
+  for (const expression of [false, true, "function"]) {
     const source = loaderFixture(expression);
     assert.ok(loadGate.assetNeedles.every((needle) => source.includes(needle)));
     const { value: patched, warnings } = captureWarnings(() => loadGate.apply(source));
@@ -97,6 +98,18 @@ test("loader copies keep the module-local rollout binding and Linux-only behavio
       }
     }
   }
+});
+
+test("inline loader contracts stay idempotent and reject duplicate owners", () => {
+  const source = 'function loader(){return(0,flags.read)("1042620455")}';
+  const { value: patched, warnings } = captureWarnings(() => loadGate.apply(source));
+  assert.notEqual(patched, source);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(captureWarnings(() => loadGate.apply(patched)), { value: patched, warnings: [] });
+  const duplicate = source + source;
+  const rejected = captureWarnings(() => loadGate.apply(duplicate));
+  assert.equal(rejected.value, duplicate);
+  assert.match(rejected.warnings.join("\n"), /unique remote-control loader rollout gate/);
 });
 
 test("loader contracts reject foreign bindings, duplicates, and partial patches", () => {
@@ -128,7 +141,7 @@ test("loader contracts reject foreign bindings, duplicates, and partial patches"
 
 test("settings page and search retain account restrictions and non-Linux hide gates", () => {
   for (const panel of [false, true]) {
-    for (const expression of [false, true]) {
+    for (const expression of [false, true, "function"]) {
       const source = settingsFixture(panel, expression);
       assert.ok(settings.assetNeedles.every((needle) => source.includes(needle)));
       const { value: patched, warnings } = captureWarnings(() => settings.apply(source));

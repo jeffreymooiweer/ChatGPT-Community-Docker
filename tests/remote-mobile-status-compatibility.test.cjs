@@ -23,6 +23,7 @@ function warningsFrom(fn) {
 }
 
 function factory(id, body, expression = true) {
+  if (expression === "function") return `${id}:function(e,t,n){"use strict";${body}}`;
   return expression ? `${id}:(function(e,t,n){"use strict";${body}})` : `${id}(e,t,n){"use strict";${body}}`;
 }
 
@@ -61,8 +62,8 @@ function activeFixture() {
   return 'const status=function({latestTurnStatus:e,resumeState:t,historyAttached:n,threadRuntimeStatus:a}){return n?a?.type==="active"||"inProgress"===e?"active":"inactive":"needs_resume"===t?"needs-resume":"read-only"};';
 }
 
-test("terminal recovery keeps pending-input helpers inside parenthesized module factories", () => {
-  for (const expression of [true, false]) {
+test("terminal recovery keeps pending-input helpers inside supported module factories", () => {
+  for (const expression of [true, false, "function"]) {
     const source = terminalFixture(expression);
     const { value: patched, warnings } = warningsFrom(() => terminal.apply(source));
     assert.notEqual(patched, source);
@@ -71,7 +72,8 @@ test("terminal recovery keeps pending-input helpers inside parenthesized module 
     assert.equal(patchBreaksJavaScriptSyntax(source, patched), false);
     assert.equal(patched.split("function codexLinuxRemoteHasUserInputRequest(").length - 1, 3);
     for (const id of ["Terminal", "Sidebar", "Pending"]) {
-      const prefix = expression ? `${id}:(function(e,t,n){` : `${id}(e,t,n){`;
+      const prefix = expression === "function" ? `${id}:function(e,t,n){`
+        : expression ? `${id}:(function(e,t,n){` : `${id}(e,t,n){`;
       assert.ok(patched.includes(prefix + '"use strict";function codexLinuxRemoteHasUserInputRequest('));
     }
     const load = loadChunk(patched, { approvals: { PZ: () => true } });
