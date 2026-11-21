@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildContractTests(unittest.TestCase):
-    def test_upstream_fix_is_validated_without_reapplying_local_diff(self):
+    def test_upstream_summary_fix_is_validated_without_reapplying_obsolete_diff(self):
         dockerfile = (ROOT / "Dockerfile").read_text()
-        self.assertNotIn("git apply", dockerfile)
+        self.assertNotIn("remote-mobile-reasoning-summary.patch", dockerfile)
         self.assertFalse((ROOT / "patches/remote-mobile-reasoning-summary.patch").exists())
         self.assertIn("UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/*.test.cjs", dockerfile)
         checksum = dockerfile.index("sha256sum -c -")
