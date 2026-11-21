@@ -22,8 +22,14 @@ RUN git init . \
     && git fetch --depth=1 origin "${WRAPPER_SHA}" \
     && git checkout --detach FETCH_HEAD
 
+COPY patches/remote-mobile-261117.patch /tmp/remote-mobile-261117.patch
+# Keep the enabled mobile feature compatible with the current official chunks.
+# Unknown upstream changes must fail before tests or application packaging.
+RUN git apply --check /tmp/remote-mobile-261117.patch \
+    && git apply /tmp/remote-mobile-261117.patch
+
 COPY tests/*.test.cjs /tmp/unraid-tests/
-# Upstream owns the current reasoning-summary and visibility implementations.
+# Upstream owns the reasoning-summary and visibility implementations.
 # Verify behavior and access restrictions, not the spelling of a local diff.
 RUN UPSTREAM_SOURCE=/src node --test /tmp/unraid-tests/*.test.cjs \
     && node --test linux-features/remote-mobile-control/test.js
@@ -45,7 +51,7 @@ RUN mkdir -p /tmp/official-contract \
         | tar -x -C /tmp/official-contract ./usr/lib/chatgpt/resources/app.asar \
     && UPSTREAM_SOURCE=/src \
         OFFICIAL_ASAR=/tmp/official-contract/usr/lib/chatgpt/resources/app.asar \
-        node --test /tmp/unraid-tests/remote-mobile-reasoning-summary.test.cjs \
+        node --test /tmp/unraid-tests/*.test.cjs \
     && rm -rf /tmp/official-contract
 
 RUN UPSTREAM_DEB=/tmp/chatgpt.deb make build-app \
