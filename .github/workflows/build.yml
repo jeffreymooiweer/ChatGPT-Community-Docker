@@ -2,34 +2,85 @@ name: Build ChatGPT Community Docker
 
 on:
   push:
-    branches: [main]
-    paths-ignore: ['README.md', 'docs/**']
+    branches: [main, staging]
+    paths-ignore: ['README.md', 'docs/**', 'upstream-state.json']
   pull_request:
-    branches: [main]
+    branches: [main, staging]
+    # Metadata-only promotion PRs already have a full build on their exact
+    # staging head. Do not request a duplicate bot-created PR workflow.
+    paths-ignore: ['README.md', 'docs/**', 'upstream-state.json', 'upstream-candidate.json']
   schedule:
     - cron: '17 */6 * * *'
     - cron: '37 3 * * 0'
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact staging commit prepared for validation
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: chatgpt-community-${{ github.event.pull_request.number || github.ref }}
+  group: chatgpt-community-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'release' }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout stable source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Discover the current signed upstream
+        env:
+          RESOLVE_MODE: discover
+        run: bash scripts/resolve-upstream.sh
+
+      - name: Prepare and dispatch staging candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: python3 scripts/release.py prepare
+
   build:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: write
-      packages: write
+      contents: read
+    outputs:
+      image_id: ${{ steps.export.outputs.image_id }}
+      archive_sha256: ${{ steps.export.outputs.archive_sha256 }}
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify dispatched staging revision
+        if: github.ref == 'refs/heads/staging'
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [ -n "$EXPECTED_SHA" ]; then test "$EXPECTED_SHA" = "$GITHUB_SHA"; fi
 
       - name: Validate scripts and persistent-data migration
         run: |
@@ -44,47 +95,13 @@ jobs:
       - name: Resolve upstream
         id: upstream
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          state="$RUNNER_TEMP/upstream-state.json"
-          # Local packages must match the current signed stable index on every build.
-          # The recorded state tracks successful publication, not the next candidate.
-          git clone --depth=1 https://github.com/ilysenko/codex-desktop-linux.git "$RUNNER_TEMP/upstream"
-          node "$RUNNER_TEMP/upstream/scripts/lib/upstream-linux-package.js" \
-            --output-dir "$RUNNER_TEMP/metadata" \
-            --metadata "$RUNNER_TEMP/package.json" \
-            --key-base64 "$RUNNER_TEMP/upstream/assets/openai-codex-linux-repository-key.gpg.base64" \
-            --arch amd64 --metadata-only
-          jq -S --arg sha "$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)" \
-            '{wrapper_sha:$sha, official_version:.version, official_path:.repositoryPath, official_sha256:.sha256}' \
-            "$RUNNER_TEMP/package.json" > "$state"
-          jq -e '
-            (.wrapper_sha | test("^[0-9a-f]{40}$")) and
-            (.official_sha256 | test("^[0-9a-f]{64}$")) and
-            (.official_version | test("^[0-9][0-9A-Za-z.+:~-]*$")) and
-            (.official_path | test("^pool/[A-Za-z0-9._+/-]+\\.deb$"))
-          ' "$state" > /dev/null
-          changed=true
-          if diff -q <(jq -S . upstream-state.json) <(jq -S . "$state") >/dev/null; then
-            changed=false
-          fi
-          should_build=true
-          if [ "$EVENT_NAME" = schedule ] && [ "$changed" = false ] && [ "$SCHEDULE" != '37 3 * * 0' ]; then
-            should_build=false
-          fi
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          echo "should_build=$should_build" >> "$GITHUB_OUTPUT"
-          jq -r 'to_entries[] | "\(.key)=\(.value)"' "$state" >> "$GITHUB_OUTPUT"
+          RESOLVE_MODE: ${{ github.event_name == 'pull_request' && 'discover' || 'verify-candidate' }}
+        run: bash scripts/resolve-upstream.sh
 
       - name: Set up Docker Buildx
-        if: steps.upstream.outputs.should_build == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build candidate without publishing
-        if: steps.upstream.outputs.should_build == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -106,58 +123,88 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Test X11 and Wayland startup, HTTPS and restart persistence
-        if: steps.upstream.outputs.should_build == 'true'
         run: bash tests/smoke.sh chatgpt-community-ci:test
 
       - name: Save smoke-test logs
-        if: always() && steps.upstream.outputs.should_build == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-logs-${{ github.run_id }}
+          name: smoke-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Save candidate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/upstream-state.json
+            ${{ runner.temp }}/package.json
+            upstream-candidate.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Export the successfully tested image
+        id: export
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-image"
+          docker save chatgpt-community-ci:test | gzip -1 > "$RUNNER_TEMP/release-image/image.tar.gz"
+          echo "image_id=$(docker image inspect chatgpt-community-ci:test --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$(sha256sum "$RUNNER_TEMP/release-image/image.tar.gz" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve the exact image for promotion
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-image/image.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
+
+  promote:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/staging' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+      actions: read
+      checks: read
+      statuses: read
+    steps:
+      - name: Checkout tested staging source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Download the tested image from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: tested-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-image
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GHCR
-        if: steps.upstream.outputs.should_build == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish exactly the tested image
-        if: steps.upstream.outputs.should_build == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Merge and publish only the validated staging image
         env:
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          image="ghcr.io/${REPOSITORY,,}"
-          version="build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:12}"
-          docker tag chatgpt-community-ci:test "$image:$version"
-          docker push "$image:$version"
-          docker tag chatgpt-community-ci:test "$image:latest"
-          docker push "$image:latest"
-          printf 'Published `%s:latest` and `%s:%s`.\n' "$image" "$image" "$version" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Checkout for recording successfully published upstream
-        if: steps.upstream.outputs.changed == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Record published upstream only after successful tests and push
-        if: steps.upstream.outputs.changed == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            echo 'Main advanced during this run; let the next run record its upstream.'
-            exit 0
-          fi
-          cp "$RUNNER_TEMP/upstream-state.json" upstream-state.json
-          git add upstream-state.json
-          if git diff --cached --quiet; then exit 0; fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore: record successfully published upstream'
-          git push origin HEAD:main
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          EXPECTED_IMAGE_ID: ${{ needs.build.outputs.image_id }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+        run: python3 scripts/release.py promote

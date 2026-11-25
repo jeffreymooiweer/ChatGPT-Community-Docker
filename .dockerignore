@@ -3,6 +3,8 @@
 .github
 unraid
 upstream-state.json
+upstream-candidate.json
+scripts
 README.md
 docs
 compose.yaml
