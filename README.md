@@ -150,15 +150,30 @@ rewritten when environment variables change.
 
 ## Updates and troubleshooting
 
-The workflow checks upstream every six hours and runs a weekly refresh. Only
-candidates that pass the required checks are published as `latest`. Upstream
-changes can still require maintenance; failed candidates leave the previous
-published image available. Previous builds have unique `build-...` tags.
+The workflow checks upstream every six hours and runs a weekly refresh. New
+versions are prepared on the permanent `staging` branch. The scheduled job on
+`main` only discovers the current signed upstream and dispatches validation;
+it does not build or publish an untested upstream version.
 
-Every workflow run discovers the current upstream wrapper and signed stable app
-package, including code changes and pull requests. `upstream-state.json` records
-the last successfully tested and published release; failed builds and pull
-requests leave it unchanged.
+`staging` records one exact wrapper commit and official package in
+`upstream-candidate.json`. Its Docker build runs the configuration and migration
+tests, upstream compatibility checks, tests against the real official app, and
+all three X11/Wayland smoke scenarios. Only a fully successful candidate can be
+merged into `main` through a pull request. Required reviews and branch rules
+still apply. Code changes in ordinary pull requests also receive the full build
+and tests before merging.
+
+Publication imports the exact tested image from the staging run, verifies its
+archive checksum and image ID, and publishes it under `latest` and a unique
+`build-...` tag. It does not resolve a newer upstream or rebuild after the merge.
+Stale candidates are rejected if either branch has moved. A failed build or
+test leaves `main`, the published image, and `upstream-state.json` unchanged.
+
+`upstream-state.json` records successful publication only, including the tested
+upstream, source fingerprint, image tag, and registry digest. It is updated only
+after both registry tags have been verified. The Actions workflow needs permission
+to create pull requests for automatic promotion. If a required review, branch
+rule, or permission blocks promotion, the workflow stops rather than bypassing it.
 
 Publication does not update running containers. Finish active tasks and back up
 appdata before updating. For Compose:
