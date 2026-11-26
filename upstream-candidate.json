@@ -1,9 +1,9 @@
 {
-  "base_sha": "64513abf4652769f89440f5bc5d621dac016755c",
-  "generation": "45782304201",
+  "base_sha": "e4ca3b44f1ab9088e5ed6fa10ed0b51ca959844a",
+  "generation": "45898954423",
   "official_path": "pool/main/c/chatgpt/chatgpt_26.1120.50957_amd64.deb",
   "official_sha256": "e8ab38df96d6070fd5d4582a606490637728243bb529e9edae19b3f0a6e664d2",
   "official_version": "26.1120.50957",
   "source_tree": "28a9e28155bd44c5421e270a7b1917281e0ccc4007f25f792b4b41e3316c2116",
-  "wrapper_sha": "a5a15d2eb0b73cc2eaea8f5af60b1fd1b293ebf4"
+  "wrapper_sha": "ebb97799faa1a3437608e8f1812801a1c7b14b74"
 }
